@@ -136,25 +136,9 @@ resource "aws_instance" "app" {
   }
 }
 
-# Allocate Elastic IP
-resource "aws_eip" "app" {
-  instance = aws_instance.app.id
-  domain   = "vpc"
-
-  tags = {
-    Name = "${var.project_name}-eip"
-  }
-
-  depends_on = [aws_instance.app]
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
 # Output for Ansible
 output "instance_ip" {
-  value       = aws_eip.app.public_ip
+  value       = aws_instance.app.public_ip
   description = "Public IP of the EC2 instance"
 }
 
@@ -169,11 +153,11 @@ output "security_group_id" {
 }
 
 output "ssh_command" {
-  value       = "ssh -i ~/.ssh/${var.key_pair_name}.pem ubuntu@${aws_eip.app.public_ip}"
+  value       = "ssh -i ~/.ssh/${var.key_pair_name}.pem ubuntu@${aws_instance.app.public_ip}"
   description = "SSH command to connect to the instance"
 }
 
 output "app_url" {
-  value       = "http://${aws_eip.app.public_ip}"
+  value       = "http://${aws_instance.app.public_ip}"
   description = "Application URL"
 }
