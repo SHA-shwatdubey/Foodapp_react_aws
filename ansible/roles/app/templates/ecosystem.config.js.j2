@@ -1,0 +1,16 @@
+module.exports = {
+  apps: [{
+    name: 'food-app',
+    script: 'npx',
+    args: 'serve -s food-app/build -l 3000',
+    cwd: '/var/www/food-app',
+    instances: 1,
+    exec_mode: 'cluster',
+    env: {
+      NODE_ENV: 'production'
+    },
+    error_file: '/var/log/pm2/food-app-error.log',
+    out_file: '/var/log/pm2/food-app-out.log',
+    log_date_format: 'YYYY-MM-DD HH:mm:ss Z'
+  }]
+};

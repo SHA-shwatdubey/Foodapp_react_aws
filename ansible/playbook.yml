@@ -1,0 +1,12 @@
+---
+- name: Deploy React Food App
+  hosts: all
+  become: yes
+  vars:
+    app_dir: /var/www/food-app
+    repo_url: "{{ github_repo_url }}"
+    repo_branch: "{{ github_branch | default('main') }}"
+    node_version: "18"
+
+  roles:
+    - app

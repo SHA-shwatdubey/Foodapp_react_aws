@@ -1,0 +1,75 @@
+---
+- name: Clone or update repository
+  git:
+    repo: "{{ repo_url }}"
+    dest: "{{ app_dir }}"
+    version: "{{ repo_branch }}"
+    force: yes
+
+- name: Install dependencies
+  shell: cd {{ app_dir }}/food-app && npm install
+  environment:
+    CI: "true"
+
+- name: Build React application
+  shell: cd {{ app_dir }}/food-app && npm run build
+  environment:
+    CI: "true"
+
+- name: Install PM2 globally
+  npm:
+    name: pm2
+    global: yes
+
+- name: Create PM2 ecosystem config
+  template:
+    src: ecosystem.config.js.j2
+    dest: "{{ app_dir }}/ecosystem.config.js"
+    owner: ubuntu
+    group: ubuntu
+    mode: '0644'
+
+- name: Stop previous PM2 process
+  shell: pm2 delete food-app || true
+  become_user: ubuntu
+
+- name: Start application with PM2
+  shell: cd {{ app_dir }} && pm2 start ecosystem.config.js
+  become_user: ubuntu
+
+- name: Save PM2 process list
+  shell: pm2 save
+  become_user: ubuntu
+
+- name: Configure Nginx as reverse proxy
+  template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/sites-available/food-app
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Enable Nginx site
+  file:
+    src: /etc/nginx/sites-available/food-app
+    dest: /etc/nginx/sites-enabled/food-app
+    state: link
+
+- name: Remove default Nginx site
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+
+- name: Test Nginx configuration
+  shell: nginx -t
+
+- name: Restart Nginx
+  service:
+    name: nginx
+    state: restarted
+    enabled: yes
+
+- name: Setup PM2 startup
+  shell: pm2 startup -u ubuntu --hp /home/ubuntu
+  register: pm2_startup
+  changed_when: "'already installed' not in pm2_startup.stdout"
