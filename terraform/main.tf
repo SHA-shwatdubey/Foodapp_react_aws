@@ -12,73 +12,33 @@ provider "aws" {
   region = var.aws_region
 }
 
-# Use default VPC instead of creating a new one
+# Get default VPC
 data "aws_vpc" "default" {
   default = true
 }
 
-# Data source for availability zones
+# Get availability zones
 data "aws_availability_zones" "available" {
   state = "available"
 }
 
-# Use or create public subnet in default VPC
-data "aws_subnets" "default_public" {
+# Get existing public subnets
+data "aws_subnets" "public" {
   filter {
     name   = "vpc-id"
     values = [data.aws_vpc.default.id]
   }
-  filter {
-    name   = "map-public-ip-on-launch"
-    values = ["true"]
-  }
 }
 
-# If no public subnet found, create one
-resource "aws_subnet" "public" {
-  count                   = length(data.aws_subnets.default_public.ids) > 0 ? 0 : 1
-  vpc_id                  = data.aws_vpc.default.id
-  cidr_block              = "172.31.100.0/24"
-  availability_zone       = data.aws_availability_zones.available.names[0]
-  map_public_ip_on_launch = true
-
-  tags = {
-    Name = "${var.project_name}-public-subnet"
-  }
+# Use first available public subnet
+locals {
+  public_subnet_id = length(data.aws_subnets.public.ids) > 0 ? data.aws_subnets.public.ids[0] : null
 }
 
-# Route Table
-resource "aws_route_table" "public" {
-  vpc_id = data.aws_vpc.default.id
-
-  route {
-    cidr_block      = "0.0.0.0/0"
-    gateway_id      = data.aws_internet_gateways.default.internet_gateways[0].id
-  }
-
-  tags = {
-    Name = "${var.project_name}-rt"
-  }
-}
-
-# Get default internet gateway
-data "aws_internet_gateways" "default" {
-  filter {
-    name   = "attachment.vpc-id"
-    values = [data.aws_vpc.default.id]
-  }
-}
-
-# Route Table Association
-resource "aws_route_table_association" "public" {
-  subnet_id      = length(data.aws_subnets.default_public.ids) > 0 ? data.aws_subnets.default_public.ids[0] : aws_subnet.public[0].id
-  route_table_id = aws_route_table.public.id
-}
-
-# Security Group
+# Create security group in default VPC
 resource "aws_security_group" "app" {
-  name        = "${var.project_name}-sg"
-  description = "Security group for React App"
+  name        = "${var.project_name}-sg-${formatdate("YYYYMMDD-hhmm", timestamp())}"
+  description = "Security group for React Food Delivery App"
   vpc_id      = data.aws_vpc.default.id
 
   # SSH
@@ -105,7 +65,7 @@ resource "aws_security_group" "app" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # React Dev Server (optional - remove in production)
+  # React App Port
   ingress {
     from_port   = 3000
     to_port     = 3000
@@ -113,7 +73,7 @@ resource "aws_security_group" "app" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Outbound
+  # Outbound traffic
   egress {
     from_port   = 0
     to_port     = 0
@@ -123,6 +83,10 @@ resource "aws_security_group" "app" {
 
   tags = {
     Name = "${var.project_name}-sg"
+  }
+
+  lifecycle {
+    create_before_destroy = true
   }
 }
 
@@ -146,29 +110,33 @@ data "aws_ami" "ubuntu" {
 resource "aws_instance" "app" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type
-  subnet_id              = length(data.aws_subnets.default_public.ids) > 0 ? data.aws_subnets.default_public.ids[0] : aws_subnet.public[0].id
+  subnet_id              = local.public_subnet_id
   vpc_security_group_ids = [aws_security_group.app.id]
   key_name               = var.key_pair_name
 
-  # User data script to install basic dependencies
-  user_data = base64encode(templatefile("${path.module}/user_data.sh", {
-    project_name = var.project_name
-  }))
+  # User data script to install Node.js, Nginx, etc
+  user_data = base64encode(file("${path.module}/user_data.sh"))
 
   root_block_device {
     volume_type           = "gp3"
     volume_size           = 20
     delete_on_termination = true
+
+    tags = {
+      Name = "${var.project_name}-root-volume"
+    }
   }
 
   tags = {
-    Name = "${var.project_name}-app-server"
+    Name = "${var.project_name}-server"
   }
 
-  depends_on = [data.aws_internet_gateways.default]
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
-# Elastic IP for EC2
+# Allocate Elastic IP
 resource "aws_eip" "app" {
   instance = aws_instance.app.id
   domain   = "vpc"
@@ -177,5 +145,35 @@ resource "aws_eip" "app" {
     Name = "${var.project_name}-eip"
   }
 
-  depends_on = [aws_internet_gateway.main]
+  depends_on = [aws_instance.app]
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# Output for Ansible
+output "instance_ip" {
+  value       = aws_eip.app.public_ip
+  description = "Public IP of the EC2 instance"
+}
+
+output "instance_id" {
+  value       = aws_instance.app.id
+  description = "EC2 Instance ID"
+}
+
+output "security_group_id" {
+  value       = aws_security_group.app.id
+  description = "Security Group ID"
+}
+
+output "ssh_command" {
+  value       = "ssh -i ~/.ssh/${var.key_pair_name}.pem ubuntu@${aws_eip.app.public_ip}"
+  description = "SSH command to connect to the instance"
+}
+
+output "app_url" {
+  value       = "http://${aws_eip.app.public_ip}"
+  description = "Application URL"
 }
