@@ -31,6 +31,22 @@
     name: pm2
     global: yes
 
+- name: Create PM2 log directory
+  file:
+    path: /var/log/pm2
+    state: directory
+    owner: ubuntu
+    group: ubuntu
+    mode: '0755'
+
+- name: Create PM2 home directory for ubuntu user
+  file:
+    path: /home/ubuntu/.pm2
+    state: directory
+    owner: ubuntu
+    group: ubuntu
+    mode: '0755'
+
 - name: Create PM2 ecosystem config
   template:
     src: ecosystem.config.js.j2
@@ -42,14 +58,20 @@
 - name: Stop previous PM2 process
   shell: pm2 delete food-app || true
   become_user: ubuntu
+  environment:
+    PM2_HOME: /home/ubuntu/.pm2
 
 - name: Start application with PM2
   shell: cd {{ app_dir }} && pm2 start ecosystem.config.js
   become_user: ubuntu
+  environment:
+    PM2_HOME: /home/ubuntu/.pm2
 
 - name: Save PM2 process list
   shell: pm2 save
   become_user: ubuntu
+  environment:
+    PM2_HOME: /home/ubuntu/.pm2
 
 - name: Configure Nginx as reverse proxy
   template:
