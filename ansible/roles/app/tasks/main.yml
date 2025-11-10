@@ -1,4 +1,14 @@
 ---
+- name: Wait for npm to be available
+  shell: which npm
+  register: npm_available
+  retries: 30
+  delay: 5
+  until: npm_available.rc == 0
+
+- name: Verify npm version
+  shell: npm --version
+
 - name: Clone or update repository
   git:
     repo: "{{ repo_url }}"

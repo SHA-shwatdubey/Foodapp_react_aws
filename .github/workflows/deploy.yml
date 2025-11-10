@@ -138,6 +138,19 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ needs.terraform.outputs.instance_ip }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
+      - name: Wait for EC2 instance to be ready
+        run: |
+          INSTANCE_IP=${{ needs.terraform.outputs.instance_ip }}
+          echo "Waiting for EC2 instance to be fully initialized..."
+          for i in {1..60}; do
+            if ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@$INSTANCE_IP "which npm" 2>/dev/null; then
+              echo "✅ NPM is available on instance"
+              break
+            fi
+            echo "Attempt $i/60: Waiting for npm... ($(($i * 5)) seconds)"
+            sleep 5
+          done
+
       - name: Update Ansible inventory
         run: |
           cat > ansible/hosts << EOF
