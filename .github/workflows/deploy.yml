@@ -155,10 +155,11 @@ jobs:
         run: |
           cat > ansible/hosts << EOF
           [webservers]
-          ${{ needs.terraform.outputs.instance_ip }} ansible_user=ubuntu ansible_private_key_file=~/.ssh/id_rsa
+          ${{ needs.terraform.outputs.instance_ip }} ansible_user=ubuntu ansible_private_key_file=~/.ssh/id_rsa ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
 
           [webservers:vars]
           ansible_python_interpreter=/usr/bin/python3
+          ansible_ssh_retries=5
           EOF
 
       - name: Run Ansible playbook
