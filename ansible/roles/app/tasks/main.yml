@@ -1,8 +1,13 @@
 ---
+- name: Wait for SSH to be ready
+  wait_for_connection:
+    delay: 10
+    timeout: 300
+
 - name: Wait for npm to be available
   shell: which npm
   register: npm_available
-  retries: 30
+  retries: 60
   delay: 5
   until: npm_available.rc == 0
 
